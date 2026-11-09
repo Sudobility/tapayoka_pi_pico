@@ -15,10 +15,25 @@ This repo uses the same shared policy logic as `tapayoka_pi`, but it does not co
 
 MicroPython targets are constrained and should not depend on PyPI installation flow at runtime. Keeping the shared package local makes the Pico firmware self-contained while still reusing the same logic.
 
-## Setup
+## Hardware & board
 
-1. Flash MicroPython firmware to Pico W
-2. Copy `src/` files to device, including the local `tapayoka_pi_core` package
+- **Board**: Raspberry Pi Pico W (RP2040 + CYW43439 for BLE/Wi-Fi)
+- **Firmware runtime**: MicroPython with the `aioble` BLE stack
+- **Relay output**: default GPIO 15 (`DEFAULT_RELAY_PIN`); logical action pins
+  1..26 map to physical GPIOs via `src/pin_mapping.py`
+- **Device BLE name**: `tapayoka-<first 8 hex of wallet address>`
+- **Reported firmware version**: `0.1.0-pico`
+
+## Setup (on device)
+
+1. Flash MicroPython (with `aioble`) firmware to the Pico W
+2. Copy everything under `src/` to the device, including the vendored
+   `tapayoka_pi_core` package, so `main.py` can `import tapayoka_pi_core`
+3. The device runs `src/main.py`; with no `TRANSPORT` env (MicroPython has no
+   `os.getenv`) it defaults to the on-device BLE transport
+4. On first boot the device generates its own wallet key
+   (`/wallet_key.json`); the server wallet is configured later over the wire
+   (`SETUP_SERVER`), stored in `/server_wallet.txt`
 
 ## Architecture
 
@@ -29,9 +44,14 @@ MicroPython targets are constrained and should not depend on PyPI installation f
 
 ## Development
 
+Tests run on CPython on your host machine (not on the Pico). They exercise the
+shared logic (crypto, command handling, policy, GPIO/relay via a mock, and the
+WS/kiosk dev harness). The suite needs more than pytest alone — it imports
+`eth_account` and `websockets` — so install the full dev requirements:
+
 ```bash
-pip install pytest
-pytest tests/ -v
+pip install -r requirements-dev.txt   # pytest, eth-account, websockets, qrcode, local tapayoka_pi_core
+pytest tests/ -v                       # run from the repo root (tests import `src.*`)
 ```
 
 ## Local dev (WebSocket + kiosk)
