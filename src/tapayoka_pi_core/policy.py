@@ -8,6 +8,12 @@ MIN_BCM_PIN = 0
 MAX_BCM_PIN = 27
 MAX_SEEN_NONCES = 512
 
+# Command response status returned when an EXECUTE command arrives on a device
+# that has not been configured with a server wallet. Transports use this value
+# to close the connection. Must stay in sync with the BleDeviceResponse status
+# literal in tapayoka_types (TypeScript).
+STATUS_NOT_CONFIGURED = "NOT_CONFIGURED"
+
 
 def _days_from_civil(year, month, day):
     year = year - 1 if month <= 2 else year
@@ -19,7 +25,12 @@ def _days_from_civil(year, month, day):
     return era * 146097 + day_of_era - 719468
 
 
-def validate_signals(signals, max_signal_seconds=MAX_SIGNAL_SECONDS, min_bcm_pin=MIN_BCM_PIN, max_bcm_pin=MAX_BCM_PIN):
+def validate_signals(
+    signals,
+    max_signal_seconds=MAX_SIGNAL_SECONDS,
+    min_bcm_pin=MIN_BCM_PIN,
+    max_bcm_pin=MAX_BCM_PIN,
+):
     if not isinstance(signals, list) or not signals:
         return None
     result = []
