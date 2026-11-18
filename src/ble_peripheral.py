@@ -17,8 +17,16 @@ from .config import (
     BLE_DEVICE_NAME_PREFIX, BLE_SERVICE_UUID,
 )
 from .command_handler import CommandHandler
+from .control import (
+    DISCONNECT, DISCONNECTED, is_control_message, make_disconnect,
+    make_disconnected,
+)
 from .eth_wallet import _hex, _random_bytes
 from tapayoka_pi_core import build_device_info_data
+
+# How long the device waits for the app's DISCONNECTED ack after sending a
+# DISCONNECT during a graceful teardown, before dropping the link anyway (ms).
+_DISCONNECT_ACK_MS = 250
 
 
 def _uuid(s):
@@ -67,15 +75,30 @@ class TapayokaPicoBle:
                 while connection.is_connected():
                     try:
                         _, data = await asyncio.wait_for(command_char.written(), timeout=30)
-                        response = self._handle_command(data)
-                        response_char.write(json.dumps(response).encode())
-                        response_char.notify(connection)
-                        if response.get("status") == "NOT_CONFIGURED":
-                            print("[BLE] Disconnecting: device not configured")
+                    except asyncio.TimeoutError:
+                        continue  # idle tick; keep the connection
+
+                    # Control messages ride the command channel; answer them here
+                    # and never pass them to the (signing-checked) handler.
+                    msg = self._parse(data)
+                    if is_control_message(msg):
+                        if msg.get("type") == DISCONNECT:
+                            # App initiated teardown: ack, then drop the link so
+                            # we return to advertising immediately.
+                            print("[BLE] Peer requested disconnect; acking")
+                            self._notify(response_char, connection, make_disconnected(msg["nonce"]))
                             await connection.disconnect()
                             break
-                    except asyncio.TimeoutError:
-                        pass
+                        # A stray DISCONNECTED / ping: nothing to do.
+                        continue
+
+                    response = self._handle_command(data)
+                    response_char.write(json.dumps(response).encode())
+                    response_char.notify(connection)
+                    if response.get("status") == "NOT_CONFIGURED":
+                        print("[BLE] Disconnecting: device not configured")
+                        await self._graceful_disconnect(connection, command_char, response_char)
+                        break
 
                 print("[BLE] Disconnected")
                 if self._relay.is_active and not self._relay.is_sequence_running:
@@ -89,3 +112,38 @@ class TapayokaPicoBle:
             return self._handler.handle(json.loads(data.decode()))
         except (ValueError, KeyError) as e:
             return {"status": "ERROR", "message": str(e)}
+
+    def _parse(self, data):
+        try:
+            return json.loads(data.decode())
+        except (ValueError, KeyError):
+            return None
+
+    def _notify(self, response_char, connection, payload):
+        response_char.write(json.dumps(payload).encode())
+        response_char.notify(connection)
+
+    async def _graceful_disconnect(self, connection, command_char, response_char):
+        """Device-initiated graceful teardown: send DISCONNECT and wait up to
+        _DISCONNECT_ACK_MS for the app's DISCONNECTED ack before dropping the
+        link. The single inbound characteristic means the ack arrives on the
+        same command_char we read commands from — fine here, we are tearing
+        down regardless."""
+        msg = make_disconnect()
+        self._notify(response_char, connection, msg)
+        start = time.ticks_ms()
+        while connection.is_connected():
+            remaining = _DISCONNECT_ACK_MS - time.ticks_diff(time.ticks_ms(), start)
+            if remaining <= 0:
+                break
+            try:
+                _, data = await asyncio.wait_for(command_char.written(), timeout=remaining / 1000)
+            except asyncio.TimeoutError:
+                break
+            reply = self._parse(data)
+            if reply and reply.get("type") == DISCONNECTED and reply.get("nonce") == msg["nonce"]:
+                break
+        try:
+            await connection.disconnect()
+        except Exception:
+            pass

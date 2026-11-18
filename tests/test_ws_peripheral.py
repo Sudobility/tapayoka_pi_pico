@@ -86,6 +86,27 @@ def test_unknown_type_returns_error(peripheral):
     assert msg["data"]["status"] == "ERROR"
 
 
+def test_incoming_disconnect_is_acked_and_closes(peripheral):
+    async def scenario(ws):
+        await ws.recv()  # announce
+        await ws.send(json.dumps(
+            {"type": "command", "data": {"type": "DISCONNECT", "nonce": "bye"}}
+        ))
+        ack = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        closed = False
+        try:
+            await asyncio.wait_for(ws.recv(), timeout=5)
+        except websockets.exceptions.ConnectionClosed:
+            closed = True
+        return ack, closed
+
+    ack, closed = asyncio.run(_run_client(peripheral, scenario))
+    assert ack["type"] == "response"
+    assert ack["data"]["type"] == "DISCONNECTED"
+    assert ack["data"]["nonce"] == "bye"
+    assert closed
+
+
 def test_execute_unconfigured_closes_connection(peripheral):
     server = Account.create()
 
@@ -97,14 +118,19 @@ def test_execute_unconfigured_closes_connection(peripheral):
         })
         await ws.send(json.dumps({"type": "command", "data": cmd}))
         resp = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
-        # Server must close the socket right after the NOT_CONFIGURED response.
+        # After the NOT_CONFIGURED response the server runs the graceful
+        # disconnect handshake: it sends a DISCONNECT control frame, then closes
+        # the socket (we don't ack, so it closes after its short ack timeout).
+        disc = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
         with pytest.raises(websockets.exceptions.ConnectionClosed):
             await asyncio.wait_for(ws.recv(), timeout=5)
-        return resp
+        return resp, disc
 
-    msg = asyncio.run(_run_client(peripheral, scenario))
+    (msg, disc) = asyncio.run(_run_client(peripheral, scenario))
     assert msg["type"] == "response"
     assert msg["data"]["status"] == "NOT_CONFIGURED"
+    assert disc["type"] == "response"
+    assert disc["data"]["type"] == "DISCONNECT"
 
 
 def test_setup_then_execute_emits_running(peripheral, monkeypatch):

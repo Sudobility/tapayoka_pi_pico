@@ -14,9 +14,16 @@ from tapayoka_pi_core import build_device_info_data
 
 from .command_handler import CommandHandler
 from .config import BLE_DEVICE_NAME_PREFIX, DEFAULT_RELAY_PIN
+from .control import (
+    DISCONNECT, DISCONNECTED, is_control_message, make_disconnect,
+    make_disconnected,
+)
 from .eth_wallet import _hex, _random_bytes
 from .kiosk_state import generate_deep_link, update_kiosk_state
 from .pin_mapping import logical_pin_to_gpio, map_signals
+
+# Seconds to wait for the app's DISCONNECTED ack during a graceful teardown.
+_DISCONNECT_ACK_SECONDS = 0.25
 
 
 class TapayokaPicoWs:
@@ -91,6 +98,42 @@ class TapayokaPicoWs:
             started_at=int(time.time()),
         )
 
+    async def _graceful_close(self, ws):
+        """Device-initiated graceful disconnect: send DISCONNECT, wait briefly
+        for the app's DISCONNECTED ack, then close. Best-effort — a send error,
+        a closed socket, or a timeout all just proceed to close. The ack rides
+        the command channel, so match on the inner payload."""
+        from websockets.exceptions import ConnectionClosed
+
+        try:
+            await ws.send(json.dumps({"type": "response", "data": make_disconnect()}))
+        except ConnectionClosed:
+            return
+        deadline = time.monotonic() + _DISCONNECT_ACK_SECONDS
+        try:
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                except (asyncio.TimeoutError, TimeoutError):
+                    break
+                try:
+                    parsed = json.loads(raw)
+                except (ValueError, TypeError):
+                    continue
+                data = parsed.get("data") if isinstance(parsed, dict) else None
+                if is_control_message(data) and data.get("type") == DISCONNECTED:
+                    break
+        except ConnectionClosed:
+            pass
+        finally:
+            try:
+                await ws.close()
+            except ConnectionClosed:
+                pass
+
     async def _handle_connection(self, ws):
         from websockets.exceptions import ConnectionClosed
 
@@ -111,12 +154,6 @@ class TapayokaPicoWs:
 
         try:
             async for raw in ws:
-                # First message from this socket = real engagement → kiosk Connected.
-                if ws not in self._engaged:
-                    self._engaged.add(ws)
-                    update_kiosk_state(self._state_file(), status="CONNECTED",
-                                       message="Connected")
-
                 try:
                     msg = json.loads(raw)
                 except (ValueError, TypeError) as e:
@@ -127,6 +164,29 @@ class TapayokaPicoWs:
                     continue
 
                 msg_type = msg.get("type", "")
+
+                # Control messages ride the command channel; answer them without
+                # counting a probe as engagement.
+                if msg_type == "command" and is_control_message(msg.get("data")):
+                    ctrl = msg["data"]
+                    if ctrl.get("type") == DISCONNECT:
+                        print("[WS] Peer requested disconnect; acking and closing")
+                        await ws.send(json.dumps({
+                            "type": "response",
+                            "data": make_disconnected(ctrl["nonce"]),
+                        }))
+                        await ws.close()
+                        break
+                    # DISCONNECTED (ack to our own DISCONNECT) is consumed by
+                    # _graceful_close while it waits; ignore it here.
+                    continue
+
+                # First real message from this socket = real engagement → kiosk Connected.
+                if ws not in self._engaged:
+                    self._engaged.add(ws)
+                    update_kiosk_state(self._state_file(), status="CONNECTED",
+                                       message="Connected")
+
                 if msg_type == "read_device_info":
                     await ws.send(json.dumps({
                         "type": "device_info",
@@ -138,7 +198,7 @@ class TapayokaPicoWs:
                     await ws.send(json.dumps({"type": "response", "data": result}))
                     if result.get("status") == "NOT_CONFIGURED":
                         print("[WS] Closing connection: device not configured")
-                        await ws.close()
+                        await self._graceful_close(ws)
                         break
                     if (result.get("status") == "OK"
                             and str(cmd_env.get("command", "")).upper() == "EXECUTE"):
