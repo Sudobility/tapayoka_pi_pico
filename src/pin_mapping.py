@@ -1,6 +1,9 @@
 """Logical action-pin mapping for Pico relay outputs."""
 
-from __future__ import annotations
+# NOTE: no `from __future__ import annotations` here — MicroPython has no
+# __future__ module, and this file declares no annotations that would need it.
+# This module is on the device path (command_handler -> pin_mapping), so it has
+# to import under MicroPython.
 
 # Early logical pins use easy general-purpose GPIO outputs first.
 LOGICAL_TO_GPIO = (

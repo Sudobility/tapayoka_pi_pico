@@ -26,11 +26,21 @@ MicroPython targets are constrained and should not depend on PyPI installation f
 
 ## Setup (on device)
 
-1. Flash MicroPython (with `aioble`) firmware to the Pico W
-2. Copy everything under `src/` to the device, including the vendored
-   `tapayoka_pi_core` package, so `main.py` can `import tapayoka_pi_core`
-3. The device runs `src/main.py`; with no `TRANSPORT` env (MicroPython has no
-   `os.getenv`) it defaults to the on-device BLE transport
+1. Flash MicroPython **with `aioble`** firmware for the board (Pico W →
+   `RPI_PICO_W`, Pico 2 W → `RPI_PICO2_W`) from micropython.org. BLE will not
+   work without `aioble`/`bluetooth`.
+2. Copy the `src/` directory to the device as `/src` (a package, including the
+   vendored `tapayoka_pi_core`), and copy the root **`main.py`** launcher to the
+   device root. Example with [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html):
+   ```bash
+   mpremote connect <port> fs cp -r src :        # -> /src
+   mpremote connect <port> fs cp main.py :main.py
+   ```
+3. The device boots `/main.py` (the launcher), which puts `/src` on `sys.path`
+   and runs `src.main.main()`. The firmware's modules use relative imports, so
+   `src/main.py` is run **as part of the `src` package** — not directly. With no
+   `TRANSPORT` env (MicroPython has no `os.getenv`) it defaults to the on-device
+   BLE transport.
 4. On first boot the device generates its own wallet key
    (`/wallet_key.json`); the server wallet is configured later over the wire
    (`SETUP_SERVER`), stored in `/server_wallet.txt`

@@ -34,7 +34,7 @@ in MicroPython, which has no `os.getenv`).
 
 ## Deployment
 
-Flash MicroPython (with aioble) firmware to Pico W, then copy `src/` (including the vendored `tapayoka_pi_core`) to the device. `src/main.py` is the entry point. Default transport is `ble` (MicroPython has no `os.getenv`, so the `getattr`-defaulted `TRANSPORT` resolves to "ble" and the CPython-only ws branch is unreachable on-device).
+Flash MicroPython **with aioble** (Pico W → `RPI_PICO_W`, Pico 2 W → `RPI_PICO2_W`), then copy `src/` to the device as `/src` (a package, including the vendored `tapayoka_pi_core`) **and** the root `main.py` launcher to `/main.py`. The device boots `/main.py`, which adds `/src` to `sys.path` and runs `src.main.main()`: the firmware modules use **relative imports** (`from .config import ...`), so `src/main.py` must be run as part of the `src` package, not directly — hence the launcher. `tapayoka_pi_core` is imported absolutely, which is why `/src` (not just `/`) is on `sys.path`. Default transport is `ble` (MicroPython has no `os.getenv`, so the `getattr`-defaulted `TRANSPORT` resolves to "ble" and the CPython-only ws branch is unreachable on-device). On-device constraint: no `from __future__ import`, no PEP-448 `{**d}` dict-unpacking, no `json.dumps(sort_keys=...)` — none exist in MicroPython; keep device-path modules within its subset.
 
 ## Gotchas / conventions
 

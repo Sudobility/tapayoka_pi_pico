@@ -26,6 +26,24 @@ def _hex(b):
     return "".join("{:02x}".format(x) for x in b)
 
 
+def _canonical_json(obj):
+    """Serialize a flat dict with sorted keys, equivalent to
+    ``json.dumps(obj, sort_keys=True)``.
+
+    MicroPython's ``json.dumps`` has no ``sort_keys`` argument, so fall back to
+    building the object by hand. MicroPython uses the same default separators as
+    CPython (``", "`` and ``": "``) and the same scalar encoding, so for the
+    flat str/int dicts used here the fallback reproduces CPython's output
+    byte-for-byte — important because the result is what gets signed."""
+    try:
+        return json.dumps(obj, sort_keys=True)
+    except TypeError:
+        parts = []
+        for k in sorted(obj.keys()):
+            parts.append(json.dumps(k) + ": " + json.dumps(obj[k]))
+        return "{" + ", ".join(parts) + "}"
+
+
 def _utc_iso_timestamp():
     try:
         t = time.gmtime()
@@ -79,12 +97,15 @@ class EthWallet:
 
     def sign_challenge(self):
         challenge = build_challenge_data(self._address, int(time.time()), _hex(_random_bytes(16)))
-        message = json.dumps(challenge, sort_keys=True)
-        return {
-            **challenge,
-            "signedPayload": message,
-            "signature": self._sign_message(message),
-        }
+        # sort_keys for a stable signed payload; _canonical_json works on
+        # MicroPython (whose json.dumps has no sort_keys). Build the return dict
+        # explicitly rather than with `{**challenge, ...}` — MicroPython does not
+        # support dict-unpacking in a display literal.
+        message = _canonical_json(challenge)
+        result = dict(challenge)
+        result["signedPayload"] = message
+        result["signature"] = self._sign_message(message)
+        return result
 
     def sign_response(self, data):
         message_obj = build_signed_response_data(data, _utc_iso_timestamp())
