@@ -194,6 +194,16 @@ class TapayokaPicoWs:
                     }))
                 elif msg_type == "command":
                     cmd_env = msg.get("data", {})
+                    # device_info can also be requested as a command (the BLE
+                    # path the app now prefers); answer it on the response
+                    # channel instead of passing it to the signing handler.
+                    if (isinstance(cmd_env, dict)
+                            and cmd_env.get("command") == "GET_DEVICE_INFO"):
+                        await ws.send(json.dumps({
+                            "type": "response",
+                            "data": self._build_device_info(),
+                        }))
+                        continue
                     result = self._handler.handle(cmd_env)
                     await ws.send(json.dumps({"type": "response", "data": result}))
                     if result.get("status") == "NOT_CONFIGURED":
