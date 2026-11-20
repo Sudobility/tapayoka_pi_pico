@@ -18,8 +18,8 @@ from .config import (
 )
 from .command_handler import CommandHandler
 from .control import (
-    DISCONNECT, DISCONNECTED, is_control_message, make_disconnect,
-    make_disconnected,
+    DISCONNECT, DISCONNECTED, PING, is_control_message, make_disconnect,
+    make_disconnected, make_pong,
 )
 from .ble_framing import frame_message, MessageReassembler, DEFAULT_FRAME_PAYLOAD
 from .eth_wallet import _hex, _random_bytes
@@ -148,7 +148,12 @@ class TapayokaPicoBle:
                             self._send(response_char, connection, make_disconnected(msg["nonce"]), chunk_size)
                             await connection.disconnect()
                             break
-                        # A stray DISCONNECTED / ping: nothing to do.
+                        if msg.get("type") == PING:
+                            # The app's held connection runs a heartbeat; answer
+                            # its ping with a pong or it drops the link in seconds.
+                            self._send(response_char, connection, make_pong(msg["nonce"]), chunk_size)
+                            continue
+                        # A stray DISCONNECTED / PONG: nothing to do.
                         continue
 
                     # device_info request: reply with the signed envelope over

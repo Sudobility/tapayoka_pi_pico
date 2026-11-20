@@ -5,8 +5,9 @@ as business traffic but are distinguished by a ``type`` field (business commands
 use ``command``, responses use ``status``), so the transport layer answers them
 without passing them to CommandHandler. Mirrors the TypeScript
 ``BleControlMessage`` in tapayoka_types and the fuller ``control`` module in
-tapayoka_pi; the Pico only needs the DISCONNECT/DISCONNECTED handshake, so
-PING/PONG are recognised (for forward compatibility) but not generated here.
+tapayoka_pi. The Pico answers a PING with a PONG (the app's held connection
+runs a heartbeat and drops the link if a ping goes unanswered) and runs the
+DISCONNECT/DISCONNECTED handshake; it never initiates a ping itself.
 
 DISCONNECT/DISCONNECTED is the graceful-teardown handshake: a side tearing down
 a live link sends a DISCONNECT and waits briefly for the peer's DISCONNECTED ack
@@ -55,3 +56,7 @@ def make_disconnect(nonce=None):
 
 def make_disconnected(nonce):
     return {"type": DISCONNECTED, "nonce": nonce, "ts": _now_ms()}
+
+
+def make_pong(nonce):
+    return {"type": PONG, "nonce": nonce, "ts": _now_ms()}

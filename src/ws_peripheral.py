@@ -15,7 +15,8 @@ from tapayoka_pi_core import build_device_info_data
 from .command_handler import CommandHandler
 from .config import BLE_DEVICE_NAME_PREFIX, DEFAULT_RELAY_PIN
 from .control import (
-    DISCONNECT, DISCONNECTED, is_control_message, make_disconnect,
+    DISCONNECT, DISCONNECTED, PING, is_control_message, make_disconnect,
+    make_pong,
     make_disconnected,
 )
 from .eth_wallet import _hex, _random_bytes
@@ -169,6 +170,14 @@ class TapayokaPicoWs:
                 # counting a probe as engagement.
                 if msg_type == "command" and is_control_message(msg.get("data")):
                     ctrl = msg["data"]
+                    if ctrl.get("type") == PING:
+                        # The app's held connection runs a heartbeat; answer its
+                        # ping with a pong or it drops the link in seconds.
+                        await ws.send(json.dumps({
+                            "type": "response",
+                            "data": make_pong(ctrl["nonce"]),
+                        }))
+                        continue
                     if ctrl.get("type") == DISCONNECT:
                         print("[WS] Peer requested disconnect; acking and closing")
                         await ws.send(json.dumps({

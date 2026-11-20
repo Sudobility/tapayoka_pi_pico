@@ -86,6 +86,25 @@ def test_unknown_type_returns_error(peripheral):
     assert msg["data"]["status"] == "ERROR"
 
 
+def test_incoming_ping_is_ponged_and_link_stays_open(peripheral):
+    async def scenario(ws):
+        await ws.recv()  # announce
+        await ws.send(json.dumps(
+            {"type": "command", "data": {"type": "PING", "nonce": "ping-1"}}
+        ))
+        pong = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        # Link must survive the ping: a follow-up request still gets served.
+        await ws.send(json.dumps({"type": "read_device_info"}))
+        follow = json.loads(await asyncio.wait_for(ws.recv(), timeout=5))
+        return pong, follow
+
+    pong, follow = asyncio.run(_run_client(peripheral, scenario))
+    assert pong["type"] == "response"
+    assert pong["data"]["type"] == "PONG"
+    assert pong["data"]["nonce"] == "ping-1"
+    assert follow["type"] == "device_info"
+
+
 def test_incoming_disconnect_is_acked_and_closes(peripheral):
     async def scenario(ws):
         await ws.recv()  # announce
