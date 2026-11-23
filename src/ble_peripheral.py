@@ -23,6 +23,7 @@ from .control import (
 )
 from .ble_framing import frame_message, MessageReassembler, DEFAULT_FRAME_PAYLOAD
 from .eth_wallet import _hex, _random_bytes
+from .clock import set_utc_from_unix
 from tapayoka_pi_core import build_device_info_data
 
 # How long the device waits for the app's DISCONNECTED ack after sending a
@@ -34,6 +35,12 @@ _DISCONNECT_ACK_MS = 250
 # bounded by the single-read 512-byte attribute cap). Mirrors
 # tapayoka_types BLE_GET_DEVICE_INFO.
 _GET_DEVICE_INFO = "GET_DEVICE_INFO"
+
+# Request command (app -> device) carrying the app's current UTC time so a
+# clock-less Pico can stamp a real `signing_timestamp` into its device-info.
+# Sent right before GET_DEVICE_INFO; devices with a real clock (the full Pi)
+# simply treat it as an unknown command and the app ignores the reply.
+_SET_TIME = "SET_TIME"
 
 
 def _uuid(s):
@@ -154,6 +161,19 @@ class TapayokaPicoBle:
                             self._send(response_char, connection, make_pong(msg["nonce"]), chunk_size)
                             continue
                         # A stray DISCONNECTED / PONG: nothing to do.
+                        continue
+
+                    # Clock hint from the app: set our RTC so the device_info we
+                    # sign next carries a real timestamp (the Pico has no
+                    # RTC/NTP). Unsigned by design — it only moves our clock to
+                    # the app's "now", which is exactly what the freshness check
+                    # wants; the backend still validates against its own clock.
+                    if isinstance(msg, dict) and msg.get("command") == _SET_TIME:
+                        data = msg.get("data") or {}
+                        ok = set_utc_from_unix(data.get("ts"))
+                        self._send(response_char, connection,
+                                   {"status": "OK", "message": "time set" if ok else "time ignored"},
+                                   chunk_size)
                         continue
 
                     # device_info request: reply with the signed envelope over

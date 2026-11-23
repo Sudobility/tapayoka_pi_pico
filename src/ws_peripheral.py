@@ -213,6 +213,16 @@ class TapayokaPicoWs:
                             "data": self._build_device_info(),
                         }))
                         continue
+                    # Clock hint from the app (parity with the BLE path). The WS
+                    # harness runs on CPython where the host clock is already
+                    # correct, so acknowledge without touching the system clock.
+                    if (isinstance(cmd_env, dict)
+                            and cmd_env.get("command") == "SET_TIME"):
+                        await ws.send(json.dumps({
+                            "type": "response",
+                            "data": {"status": "OK", "message": "time ignored"},
+                        }))
+                        continue
                     result = self._handler.handle(cmd_env)
                     await ws.send(json.dumps({"type": "response", "data": result}))
                     if result.get("status") == "NOT_CONFIGURED":
