@@ -5,35 +5,11 @@
 # This module is on the device path (command_handler -> pin_mapping), so it has
 # to import under MicroPython.
 
-# Early logical pins use easy general-purpose GPIO outputs first.
-LOGICAL_TO_GPIO = (
-    15,
-    14,
-    13,
-    12,
-    11,
-    10,
-    9,
-    8,
-    7,
-    6,
-    5,
-    4,
-    3,
-    2,
-    1,
-    0,
-    16,
-    17,
-    18,
-    19,
-    20,
-    21,
-    22,
-    26,
-    27,
-    28,
-)
+# The logical (buyer-facing) pin -> physical GPIO map is board-specific and
+# comes from the active board profile (src/boards.py), which also applies any
+# per-device /board.json override. On the Pico this is the full RP2040 user-GPIO
+# range; on ESP32/S3/C3 it is that chip's safe-output pins.
+from .boards import LOGICAL_TO_GPIO
 
 MIN_LOGICAL_PIN = 1
 MAX_LOGICAL_PIN = len(LOGICAL_TO_GPIO)

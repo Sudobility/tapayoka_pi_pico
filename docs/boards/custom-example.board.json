@@ -1,0 +1,4 @@
+{
+  "_comment": "Example of a PARTIAL override. Every key is optional. Here we keep whatever profile auto-detection picks (no \"profile\" key) and only move the single relay from the profile default to GPIO 22 - e.g. because that is where this particular enclosure's relay is wired. Unspecified keys fall back to the detected profile.",
+  "default_relay_pin": 22
+}

@@ -1,10 +1,40 @@
 """Tapayoka Pico W - peripheral entry point (BLE on device, WS for local dev)."""
 
 import os
+import sys
 
 # os.getenv is absent in MicroPython -> getattr default makes _TRANSPORT "ble"
 # on-device, so the ws branch (and all CPython-only imports) is unreachable.
 _getenv = getattr(os, "getenv", lambda k, d=None: d)
+
+# --- WS dev-harness CLI flags ------------------------------------------------
+# Promote a few "--flag value" / "--flag=value" args to env vars so they are
+# picked up by config/boards at import time. This is a CPython-only convenience
+# for the local harness: on the device MicroPython's `os` has no `environ`
+# (and argv is empty), so the whole block is skipped and has no on-device cost.
+#   --board <rp2040|esp32|esp32s3|esp32c3>   simulate a chip's pin map
+#   --board-config <path>                    load a full /board.json-style file
+#   --transport <ws|ble>                     same as TRANSPORT=...
+_FLAG_TO_ENV = {
+    "--board": "BOARD_PROFILE",
+    "--board-config": "BOARD_CONFIG_FILE",
+    "--transport": "TRANSPORT",
+}
+if hasattr(os, "environ"):
+    _args = list(getattr(sys, "argv", []))[1:]
+    _i = 0
+    while _i < len(_args):
+        _tok = _args[_i]
+        _val = None
+        if _tok[:2] == "--" and "=" in _tok:
+            _tok, _val = _tok.split("=", 1)
+        if _tok in _FLAG_TO_ENV:
+            if _val is None:
+                _i += 1
+                _val = _args[_i] if _i < len(_args) else ""
+            os.environ[_FLAG_TO_ENV[_tok]] = _val
+        _i += 1
+
 _TRANSPORT = _getenv("TRANSPORT", "ble").lower()
 
 # In WS dev mode (CPython on a laptop) redirect wallet + kiosk storage off the
@@ -21,6 +51,7 @@ try:
 except ImportError:
     import uasyncio as asyncio
 
+from .boards import BOARD_NAME
 from .config import BLE_DEVICE_NAME_PREFIX, DEFAULT_RELAY_PIN
 from .eth_wallet import EthWallet
 from .gpio_control import RelayController
@@ -30,6 +61,7 @@ from .ble_peripheral import TapayokaPicoBle
 def main():
     print("=" * 40)
     print("Tapayoka Pico W -", _TRANSPORT.upper())
+    print("[Board]", BOARD_NAME, "| relay pin", DEFAULT_RELAY_PIN)
     print("=" * 40)
 
     wallet = EthWallet()

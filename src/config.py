@@ -2,6 +2,8 @@
 
 import os
 
+from .boards import DEFAULT_RELAY_PIN as _BOARD_DEFAULT_RELAY_PIN
+
 # os.getenv is absent in MicroPython; the getattr default keeps on-device
 # behavior identical (the "/"-rooted constants below). In CPython dev mode
 # (TRANSPORT=ws) the wallet paths can be redirected via env so storage stays
@@ -14,7 +16,9 @@ BLE_CHAR_COMMAND_UUID = "00000E33-0000-1000-8000-00805f9b34fb"
 BLE_CHAR_RESPONSE_UUID = "00000E34-0000-1000-8000-00805f9b34fb"
 BLE_DEVICE_NAME_PREFIX = "tapayoka-"
 
-DEFAULT_RELAY_PIN = 15
+# Resolved from the active board profile (RP2040 -> 15; ESP32 variants differ).
+# Overridable per-device via /board.json. See src/boards.py.
+DEFAULT_RELAY_PIN = _BOARD_DEFAULT_RELAY_PIN
 
 WALLET_KEY_FILE = _getenv("WALLET_KEY_FILE", "/wallet_key.json")
 SERVER_WALLET_FILE = _getenv("SERVER_WALLET_FILE", "/server_wallet.txt")

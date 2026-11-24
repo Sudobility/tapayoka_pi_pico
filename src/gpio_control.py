@@ -1,9 +1,11 @@
 """GPIO relay control for Pico W: single-pin timed + multi-pin async sequences."""
 
 try:
-    from machine import Pin, Timer
+    import machine
+    from machine import Pin
     MACHINE_AVAILABLE = True
 except ImportError:
+    machine = None
     MACHINE_AVAILABLE = False
     print("[GPIO] machine module not available - mock mode")
 
@@ -12,7 +14,13 @@ try:
 except ImportError:
     import uasyncio as asyncio
 
+from .boards import new_timer
 from .config import DEFAULT_RELAY_PIN
+
+
+def _make_timer():
+    """Board-correct Timer, or None in mock mode (host/ws dev)."""
+    return new_timer(machine) if MACHINE_AVAILABLE else None
 
 
 class RelayController:
@@ -20,7 +28,7 @@ class RelayController:
         self._pin_num = pin_num
         self._active_pin = pin_num
         self._active = False
-        self._timer = Timer() if MACHINE_AVAILABLE else None
+        self._timer = _make_timer()
         self._pins = {}
         self._sequence_running = False
         self._sequence_task = None
@@ -97,7 +105,7 @@ class RelayController:
         if self._timer and MACHINE_AVAILABLE:
             try:
                 self._timer.deinit()
-                self._timer = Timer()
+                self._timer = _make_timer()
             except Exception:
                 pass
 

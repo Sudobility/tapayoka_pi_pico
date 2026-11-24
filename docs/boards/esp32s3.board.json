@@ -1,0 +1,7 @@
+{
+  "_comment": "ESP32-S3 (e.g. DevKitC-1). Excludes strapping (0,3,45,46), native USB (19,20), UART0 (43,44), and the flash/PSRAM range (26-42). On quad-PSRAM or no-PSRAM modules you may additionally free 38-42 - add them here only after confirming your module does not use octal PSRAM.",
+  "profile": "esp32s3",
+  "default_relay_pin": 1,
+  "logical_to_gpio": [1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 47, 48],
+  "timer_id": 0
+}
